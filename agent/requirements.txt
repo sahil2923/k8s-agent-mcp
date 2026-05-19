@@ -1,0 +1,3 @@
+dotenv
+openai==0.28
+httpx

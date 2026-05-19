@@ -1,0 +1,15 @@
+[tool.poetry]
+name = "k8s-mcp-server"
+version = "0.1.0"
+description = "MCP server for Minikube cluster"
+authors = ["Your Name <you@example.com>"]
+packages = [{ include = "k8s_mcp_server", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.110.0"
+uvicorn = "^0.27.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
