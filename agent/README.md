@@ -6,11 +6,31 @@
 ❯ python3 -m venv .venv
 ❯ source .venv/bin/activate
 
-2. Install dependencies
-❯ pip install -r requirements.txt
+2. Configure API key
 
-3. Run agent
-❯ python3 agent.py
+Copy the example env file and add your key:
+
+```bash
+cp .env.example .env
+```
+
+**OpenRouter:** set `OPENROUTER_API_KEY` (keys start with `sk-or-v1-`). The agent auto-uses `https://openrouter.ai/api/v1`.
+
+**OpenAI:** set `OPENAI_API_KEY` instead (no base URL override needed).
+
+Optional: `OPENROUTER_MODEL=openai/gpt-4o-mini` (default for OpenRouter).
+
+3. Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+4. Run agent
+
+```bash
+python3 agent.py
+```
 
 
 # Output
