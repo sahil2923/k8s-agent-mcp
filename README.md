@@ -75,20 +75,33 @@ flowchart LR
 
 ---
 
-## Supported operations
+## Supported operations (54+)
 
-The agent and MCP server understand these `instruction` values:
+The agent acts like a **senior DevOps engineer** with broad kubectl coverage:
 
-| Instruction | Example natural language | `kubectl` equivalent |
-|-------------|--------------------------|----------------------|
-| `k8s_resource_status` | "list pods in kube-system" | `kubectl get <resource> -n <namespace>` |
-| `describe_pod` | "describe pod nginx in default" | `kubectl describe pod <name> -n <ns>` |
-| `get_pod_logs` | "logs for pod api-server in prod" | `kubectl logs <pod> -n <ns> [-c container]` |
-| `get_pod` | "get pod redis-0 in default" | `kubectl get pod <name> -n <ns>` |
-| `create_namespace` | "create namespace docker" | `kubectl create namespace <name>` |
-| `create_pod` | "run nginx pod with image nginx in docker" | `kubectl run <name> --image=<image> -n <ns>` |
+| Category | What you can ask |
+|----------|------------------|
+| **List / cluster** | pods, services, deployments, ingress, nodes, namespaces, contexts, API resources |
+| **Describe** | any resource, pods, services, deployments, nodes, ingress, configmaps, PVCs |
+| **Pod debug** | logs (tail/previous), events, YAML, `exec`, `top pods` |
+| **Service debug** | describe svc, endpoints, ingress |
+| **Rollouts** | status, history, restart, undo, scale |
+| **Config / storage** | configmaps, secrets, PV/PVC |
+| **Batch / RBAC** | jobs, cronjobs, roles, rolebindings, network policies |
+| **Mutations** | create ns/pod/deployment, expose svc, delete, label, annotate, cordon node |
 
-Parameters are inferred by the model (`resource_type`, `namespace`, `pod_name`, `container`, etc.) and passed through to the prompt builders in `prompts.py`.
+**Built-in debug workflows** (multi-step, no extra prompts):
+
+- `debug pod nginx in default` → get → describe → events → logs
+- `debug service api in prod` → get svc → describe → endpoints → events
+
+Type **`help`** in the agent to list all commands. With the MCP server running:
+
+```bash
+curl http://localhost:8080/mcp/instructions
+```
+
+Definitions live in `mcp_server/src/k8s_mcp_server/instructions_catalog.py` and `prompts.py`.
 
 ---
 
@@ -198,8 +211,8 @@ k8s-agent-mcp/
 ## Extending the project
 
 1. Add a function in `mcp_server/src/k8s_mcp_server/prompts.py` that returns a `kubectl ...` string.
-2. Register it in `PROMPT_FUNCTIONS` in `server.py`.
-3. Add the instruction name to the agent’s `PROMPT_TEMPLATE` in `agent/agent.py` so GPT knows it can emit that instruction.
+2. Add metadata in `mcp_server/src/k8s_mcp_server/instructions_catalog.py` (same function name as key).
+3. Restart the MCP server — `server.py` auto-registers all `prompts.py` functions and validates against the catalog.
 
 ---
 

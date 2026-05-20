@@ -26,11 +26,24 @@ Optional: `OPENROUTER_MODEL=openai/gpt-4o-mini` (default for OpenRouter).
 pip install -r requirements.txt
 ```
 
-4. Run agent
+4. Run agent (interactive REPL — keeps running until you type `exit` or Ctrl+C)
 
 ```bash
 python3 agent.py
 ```
+
+Type **`help`** inside the agent to see all 54+ kubectl operations.
+
+**Example prompts:**
+
+- `list all pods in kube-system`
+- `describe deployment api in prod`
+- `debug pod crashloop-api in production`
+- `debug service frontend in default`
+- `rollout status for deployment api in prod`
+- `scale deployment api to 5 replicas in prod`
+- `get events in default namespace`
+- `top pods in kube-system`
 
 
 # Output

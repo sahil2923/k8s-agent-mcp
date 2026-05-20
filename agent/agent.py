@@ -5,113 +5,110 @@ load_dotenv()
 import asyncio
 import json
 import os
-from typing import List, Optional
+import re
+from typing import Any, Dict, List, Optional
 
 import httpx
 from openai import AsyncOpenAI
 
+from instructions_loader import (
+    CATEGORY_ORDER,
+    DEBUG_POD_WORKFLOW,
+    DEBUG_SERVICE_WORKFLOW,
+    INSTRUCTIONS,
+)
+
 MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/execute")
 SESSION_ID = os.getenv("MCP_SESSION_ID", "vscode-session")
 
-INSTRUCTIONS = {
-    "k8s_resource_status": {
-        "params": ["resource_type", "namespace"],
-        "use_when": "list/show/get ALL resources of a type (pods, services, deployments, etc.)",
-        "example": {
-            "instruction": "k8s_resource_status",
-            "params": {"resource_type": "pods", "namespace": "default"},
-        },
-    },
-    "get_pod": {
-        "params": ["pod_name", "namespace"],
-        "use_when": "get ONE specific pod by name",
-        "example": {
-            "instruction": "get_pod",
-            "params": {"pod_name": "nginx", "namespace": "default"},
-        },
-    },
-    "describe_pod": {
-        "params": ["pod_name", "namespace"],
-        "use_when": "describe/describe details of ONE specific pod",
-        "example": {
-            "instruction": "describe_pod",
-            "params": {"pod_name": "nginx", "namespace": "default"},
-        },
-    },
-    "get_pod_logs": {
-        "params": ["pod_name", "namespace", "container"],
-        "use_when": "logs from ONE specific pod (container optional)",
-        "example": {
-            "instruction": "get_pod_logs",
-            "params": {"pod_name": "nginx", "namespace": "default"},
-        },
-    },
-    "create_namespace": {
-        "params": ["namespace"],
-        "use_when": "create a new namespace",
-        "example": {
-            "instruction": "create_namespace",
-            "params": {"namespace": "docker"},
-        },
-    },
-    "create_pod": {
-        "params": ["pod_name", "image", "namespace"],
-        "use_when": "create/run a new pod with an image",
-        "example": {
-            "instruction": "create_pod",
-            "params": {"pod_name": "nginx", "image": "nginx", "namespace": "docker"},
-        },
-    },
+EXIT_COMMANDS = {"exit", "quit", "q", "bye"}
+HELP_COMMANDS = {"help", "?", "commands"}
+
+# Map common LLM alias names to canonical instruction names
+INSTRUCTION_ALIASES = {
+    "list_pods": "k8s_resource_status",
+    "get_pods": "k8s_resource_status",
+    "list_services": "k8s_resource_status",
+    "get_logs": "get_pod_logs",
+    "pod_logs": "get_pod_logs",
+    "logs": "get_pod_logs",
+    "describe_svc": "describe_service",
+    "describe_service": "describe_service",
+    "describe_deploy": "describe_deployment",
+    "delete": "delete_resource",
 }
 
-EXIT_COMMANDS = {"exit", "quit", "q", "bye"}
+PARAM_ALIASES = {
+    "pod_name": ("name", "pod"),
+    "service_name": ("service", "name", "svc"),
+    "deployment_name": ("deployment", "name", "deploy"),
+    "resource_type": ("type", "kind"),
+    "namespace": ("ns",),
+    "image": ("container_image",),
+    "tail_lines": ("tail", "lines"),
+}
+
+
+def _required_hint(name: str) -> str:
+    r = INSTRUCTIONS[name]["required"]
+    return f" (requires: {', '.join(r)})" if r else ""
+
 
 def build_prompt(message: str) -> str:
-    examples = "\n".join(
-        json.dumps(spec["example"]) for spec in INSTRUCTIONS.values()
-    )
-    return f"""
-You convert Kubernetes natural language into JSON for an MCP server.
+    catalog_lines = []
+    for category in CATEGORY_ORDER:
+        items = [
+            (name, spec["summary"])
+            for name, spec in INSTRUCTIONS.items()
+            if spec["category"] == category
+        ]
+        if not items:
+            continue
+        catalog_lines.append(f"\n## {category.upper()}")
+        for name, summary in sorted(items):
+            catalog_lines.append(f"- {name}{_required_hint(name)}: {summary}")
 
-Return ONLY valid JSON: {{"instruction": "...", "params": {{...}}}}
+    examples = [
+        INSTRUCTIONS["k8s_resource_status"]["example"],
+        INSTRUCTIONS["describe_pod"]["example"],
+        INSTRUCTIONS["get_pod_logs"]["example"],
+        INSTRUCTIONS["describe_service"]["example"],
+        INSTRUCTIONS["scale_deployment"]["example"],
+        [
+            INSTRUCTIONS["create_namespace"]["example"],
+            INSTRUCTIONS["create_pod"]["example"],
+        ],
+    ]
 
-Instructions (pick exactly one):
+    return f"""You are a senior DevOps/SRE assistant that converts natural language into kubectl commands via JSON.
 
-1. k8s_resource_status — list ALL resources of a type
-   params: resource_type (pods|services|deployments|...), namespace (default if omitted)
-   Use for: "show all pods", "list deployments in kube-system", "get services"
+Return ONLY valid JSON — either one object or an ARRAY of objects:
+{{"instruction": "<name>", "params": {{...}}}}
 
-2. get_pod — get ONE pod by name
-   params: pod_name (required), namespace
-   Use for: "get pod nginx", "show pod redis-0"
+{len(INSTRUCTIONS)} supported instructions (by category):
+{"".join(catalog_lines)}
 
-3. describe_pod — describe ONE pod by name
-   params: pod_name (required), namespace
-   Use for: "describe pod api-server"
+RULES:
+1. List ALL resources → k8s_resource_status with resource_type (pods|services|deployments|ingress|configmaps|secrets|nodes|...)
+2. ONE named resource → get_resource, describe_*, or get_pod/get_service/get_deployment
+3. Never use get_pod for "all pods" — use k8s_resource_status
+4. Debug/troubleshoot a failing POD → return ARRAY (in order):
+   get_pod → describe_pod → get_pod_events → get_pod_logs (tail_lines=200, previous=true if crash)
+5. Debug a SERVICE → ARRAY: get_service → describe_service → get_endpoints → get_events
+6. Rollout issues → rollout_status, rollout_history, rollout_undo, rollout_restart
+7. Multi-step setup (namespace + pod) → JSON ARRAY, namespace first
+8. namespace defaults to "default"; use all_namespaces:true for cluster-wide lists
+9. resource_type uses kubectl plural names: pods, services, deployments, ingresses, configmaps
 
-4. get_pod_logs — logs for ONE pod
-   params: pod_name (required), namespace, container (optional)
-   Use for: "logs for pod nginx", "tail logs api-server in prod"
+Example outputs:
+{json.dumps(examples[0])}
+{json.dumps(examples[3])}
 
-5. create_namespace — create a namespace
-   params: namespace (required)
-   Use for: "create namespace docker", "new namespace called docker"
+Debug pod example:
+{json.dumps(DEBUG_POD_WORKFLOW)}
 
-6. create_pod — create/run a pod
-   params: pod_name (required), image (required), namespace
-   Use for: "create pod nginx with image nginx in docker namespace"
-
-Rules:
-- "all pods", "running pods", "pods in namespace" → k8s_resource_status (NOT get_pod)
-- get_pod/describe_pod/get_pod_logs require pod_name; never use resource_type with them
-- "create namespace X and pod Y" → return a JSON ARRAY of commands (namespace first, then pod)
-- namespace defaults to "default" when not specified
-
-Examples:
-{examples}
-
-Multi-step example:
-[{{"instruction": "create_namespace", "params": {{"namespace": "docker"}}}}, {{"instruction": "create_pod", "params": {{"pod_name": "nginx", "image": "nginx", "namespace": "docker"}}}}]
+Debug service example:
+{json.dumps(DEBUG_SERVICE_WORKFLOW)}
 
 User message: {json.dumps(message)}
 """
@@ -149,16 +146,70 @@ def _llm_client() -> tuple[AsyncOpenAI, str]:
     return client, model
 
 
+def try_workflow_expand(message: str) -> Optional[List[dict]]:
+    """Deterministic shortcuts for common debug phrases."""
+    lower = message.lower()
+
+    pod_match = re.search(
+        r"debug(?:ging)?\s+(?:the\s+)?pod\s+['\"]?([\w.-]+)['\"]?"
+        r"(?:\s+in\s+(?:the\s+)?['\"]?([\w.-]+)['\"]?\s*namespace)?",
+        lower,
+    )
+    if pod_match:
+        pod_name = pod_match.group(1)
+        namespace = pod_match.group(2) or "default"
+        return _fill_workflow(DEBUG_POD_WORKFLOW, pod_name=pod_name, namespace=namespace)
+
+    svc_match = re.search(
+        r"debug(?:ging)?\s+(?:the\s+)?(?:service|svc)\s+['\"]?([\w.-]+)['\"]?"
+        r"(?:\s+in\s+(?:the\s+)?['\"]?([\w.-]+)['\"]?\s*namespace)?",
+        lower,
+    )
+    if svc_match:
+        service_name = svc_match.group(1)
+        namespace = svc_match.group(2) or "default"
+        return _fill_workflow(
+            DEBUG_SERVICE_WORKFLOW,
+            service_name=service_name,
+            namespace=namespace,
+        )
+
+    return None
+
+
+def _fill_workflow(template: List[dict], **values: str) -> List[dict]:
+    out = []
+    for step in template:
+        blob = json.dumps(step)
+        for key, val in values.items():
+            blob = blob.replace("{" + key + "}", val)
+        out.append(json.loads(blob))
+    return out
+
+
 async def parse_nl_to_command(message: str) -> Optional[List[dict]]:
+    workflow = try_workflow_expand(message)
+    if workflow:
+        return normalize_commands(workflow)
+
     client, model = _llm_client()
     prompt = build_prompt(message)
 
     try:
         response = await client.chat.completions.create(
             model=model,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an expert Kubernetes operator. "
+                        "Output only JSON for kubectl operations."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
             temperature=0,
-            max_tokens=300,
+            max_tokens=800,
         )
     except Exception as e:
         print(f"❌ LLM request failed: {e}")
@@ -182,8 +233,25 @@ async def parse_nl_to_command(message: str) -> Optional[List[dict]]:
         return None
 
 
+def _normalize_params(params: Dict[str, Any], allowed: List[str]) -> Dict[str, Any]:
+    normalized = dict(params)
+    for canonical, aliases in PARAM_ALIASES.items():
+        if canonical in normalized:
+            continue
+        for alias in aliases:
+            if alias in normalized:
+                normalized[canonical] = normalized.pop(alias)
+                break
+
+    if allowed:
+        normalized = {
+            k: v for k, v in normalized.items()
+            if k in allowed and v not in (None, "")
+        }
+    return normalized
+
+
 def normalize_commands(parsed) -> Optional[List[dict]]:
-    """Accept a single command dict or a list of command dicts."""
     if isinstance(parsed, dict):
         commands = [parsed]
     elif isinstance(parsed, list):
@@ -200,45 +268,73 @@ def normalize_commands(parsed) -> Optional[List[dict]]:
 
 
 def normalize_command(command: dict) -> Optional[dict]:
-    """Fix common LLM mistakes before calling the MCP server."""
     if not isinstance(command, dict):
         return None
 
     instruction = command.get("instruction")
-    params = dict(command.get("params") or {})
+    if instruction in INSTRUCTION_ALIASES:
+        instruction = INSTRUCTION_ALIASES[instruction]
 
-    # List-all phrasing wrongly mapped to get_pod with resource_type
-    if instruction == "get_pod" and "resource_type" in params and "pod_name" not in params:
-        instruction = "k8s_resource_status"
-        params.setdefault("namespace", "default")
-
-    allowed = INSTRUCTIONS.get(instruction, {}).get("params", [])
-    if allowed:
-        params = {k: v for k, v in params.items() if k in allowed and v not in (None, "")}
-
-    if instruction in ("get_pod", "describe_pod", "get_pod_logs") and "pod_name" not in params:
-        print(f"⚠️ {instruction} requires pod_name; could not infer from request.")
+    if instruction not in INSTRUCTIONS:
+        print(f"⚠️ Unknown instruction: {instruction}")
         return None
+
+    spec = INSTRUCTIONS[instruction]
+    params = _normalize_params(dict(command.get("params") or {}), spec["params"])
+
+    # get_pod misused for listing
+    if instruction == "get_pod" and "resource_type" in command.get("params", {}):
+        instruction = "k8s_resource_status"
+        spec = INSTRUCTIONS[instruction]
+        params = _normalize_params(command.get("params", {}), spec["params"])
+
+    for key in spec["required"]:
+        if key not in params or params[key] in (None, ""):
+            print(f"⚠️ {instruction} requires '{key}'.")
+            return None
 
     if instruction == "k8s_resource_status":
         params.setdefault("resource_type", "pods")
         params.setdefault("namespace", "default")
 
+    if instruction in ("get_pod", "describe_pod", "get_pod_logs", "get_pod_yaml", "get_pod_events"):
+        params.setdefault("namespace", "default")
+
+    if instruction in ("describe_service", "get_service", "get_endpoints"):
+        params.setdefault("namespace", "default")
+
+    if instruction in ("describe_deployment", "get_deployment", "scale_deployment", "rollout_status",
+                       "rollout_restart", "rollout_undo", "rollout_history"):
+        params.setdefault("namespace", "default")
+
     if instruction == "create_pod":
         params.setdefault("namespace", "default")
-        if "pod_name" not in params or "image" not in params:
-            print("⚠️ create_pod requires pod_name and image.")
-            return None
 
-    if instruction == "create_namespace" and "namespace" not in params:
-        print("⚠️ create_namespace requires namespace.")
-        return None
+    if instruction == "get_pod_logs":
+        params.setdefault("tail_lines", "100")
 
     return {"instruction": instruction, "params": params}
 
 
+def print_help():
+    print(f"\n📚 {len(INSTRUCTIONS)} kubectl operations available:\n")
+    for category in CATEGORY_ORDER:
+        items = [
+            (n, INSTRUCTIONS[n]["summary"])
+            for n, s in INSTRUCTIONS.items()
+            if s["category"] == category
+        ]
+        if not items:
+            continue
+        print(f"  [{category}]")
+        for name, summary in sorted(items):
+            print(f"    • {name}: {summary}")
+    print("\n  Workflows: say 'debug pod <name>' or 'debug service <name>' for multi-step troubleshooting.")
+    print(f"  Exit: {', '.join(sorted(EXIT_COMMANDS))}\n")
+
+
 async def call_mcp_server(command_json: dict):
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
             MCP_SERVER_URL,
             json=command_json,
@@ -270,8 +366,8 @@ async def handle_command(user_input: str) -> None:
 
 
 async def main():
-    print("K8s Agent — enter commands in natural language.")
-    print(f"Type {', '.join(sorted(EXIT_COMMANDS))} or press Ctrl+C to stop.\n")
+    print("K8s DevOps Agent — natural language → kubectl")
+    print(f"  {len(INSTRUCTIONS)} operations | type 'help' for commands | Ctrl+C to stop\n")
 
     while True:
         try:
@@ -286,6 +382,10 @@ async def main():
         if user_input.lower() in EXIT_COMMANDS:
             print("👋 Goodbye!")
             break
+
+        if user_input.lower() in HELP_COMMANDS:
+            print_help()
+            continue
 
         await handle_command(user_input)
         print()
