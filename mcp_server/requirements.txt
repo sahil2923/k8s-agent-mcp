@@ -1,0 +1,4 @@
+# Pin pydantic + pydantic-core together to avoid ImportError on validate_core_schema
+fastapi>=0.110.0,<1.0
+uvicorn[standard]>=0.27.0,<1.0
+pydantic>=2.13.0,<3.0

@@ -7,9 +7,20 @@
 ❯ source .venv/bin/activate
 
 2. Install dependencies
-❯ poetry install
 
-# If poetry is not installed, install it using brew install poetry
+**Option A — pip (venv)**
+
+```bash
+pip install -r requirements.txt
+```
+
+**Option B — Poetry**
+
+```bash
+poetry install
+```
+
+# If poetry is not installed: brew install poetry
 
 3. Activate your environment:
 ❯ source "$(poetry env info --path)/bin/activate"
@@ -29,7 +40,7 @@ Follow this guide for installation - https://minikube.sigs.k8s.io/docs/start/?ar
 ❯ minikube start
 
 # Install kubectl
-❯ brew insatll kubectl
+❯ brew install kubectl
 
 Once Minikube is started you should be able to execute kubectl commands
 
@@ -44,3 +55,16 @@ Once Minikube is started you should be able to execute kubectl commands
       "namespace": "default"
     }
   }'
+
+## Troubleshooting
+
+### `ImportError: cannot import name 'validate_core_schema' from 'pydantic_core'`
+
+This means `pydantic` and `pydantic-core` were installed at incompatible versions (common with Python 3.14 + loose pins). Fix:
+
+```bash
+source venv/bin/activate   # or: source .venv/bin/activate
+pip install --upgrade -r requirements.txt
+```
+
+Recommended: use **Python 3.11–3.13** for this project (`python3.12 -m venv venv`).
