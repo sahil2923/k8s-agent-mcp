@@ -85,6 +85,8 @@ The agent and MCP server understand these `instruction` values:
 | `describe_pod` | "describe pod nginx in default" | `kubectl describe pod <name> -n <ns>` |
 | `get_pod_logs` | "logs for pod api-server in prod" | `kubectl logs <pod> -n <ns> [-c container]` |
 | `get_pod` | "get pod redis-0 in default" | `kubectl get pod <name> -n <ns>` |
+| `create_namespace` | "create namespace docker" | `kubectl create namespace <name>` |
+| `create_pod` | "run nginx pod with image nginx in docker" | `kubectl run <name> --image=<image> -n <ns>` |
 
 Parameters are inferred by the model (`resource_type`, `namespace`, `pod_name`, `container`, etc.) and passed through to the prompt builders in `prompts.py`.
 

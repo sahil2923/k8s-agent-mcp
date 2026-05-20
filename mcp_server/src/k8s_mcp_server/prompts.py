@@ -10,3 +10,11 @@ def get_pod_logs(pod_name: str, namespace: str = "default", container: str = "")
 
 def get_pod(pod_name: str, namespace: str = "default") -> str:
     return f"kubectl get pod {pod_name} -n {namespace}"
+
+
+def create_namespace(namespace: str) -> str:
+    return f"kubectl create namespace {namespace}"
+
+
+def create_pod(pod_name: str, image: str, namespace: str = "default") -> str:
+    return f"kubectl run {pod_name} --image={image} -n {namespace}"

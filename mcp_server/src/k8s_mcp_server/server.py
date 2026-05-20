@@ -13,6 +13,8 @@ PROMPT_FUNCTIONS = {
     "describe_pod": prompts.describe_pod,
     "get_pod_logs": prompts.get_pod_logs,
     "get_pod": prompts.get_pod,
+    "create_namespace": prompts.create_namespace,
+    "create_pod": prompts.create_pod,
 }
 
 class MCPRequest(BaseModel):
