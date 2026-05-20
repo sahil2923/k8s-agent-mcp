@@ -125,7 +125,7 @@ nginx   0/1     Completed   0          3d16h
 ## Prerequisites
 
 - **Python 3.11+**
-- **OpenAI API key** (set in `agent/.env` as `OPENAI_API_KEY`)
+- **LLM API key** — [OpenRouter](https://openrouter.ai/) (`OPENROUTER_API_KEY`) or OpenAI (`OPENAI_API_KEY`) in `agent/.env`
 - **Minikube** (or any cluster reachable via `kubectl`) — [Minikube install guide](https://minikube.sigs.k8s.io/docs/start/)
 - **kubectl** — `brew install kubectl` on macOS
 - **Poetry** (for the MCP server) — `brew install poetry` if needed
