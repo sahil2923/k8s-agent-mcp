@@ -1,0 +1,416 @@
+"""
+Instruction metadata for the K8s agent LLM prompt and validation.
+Each key must match a function in prompts.py.
+"""
+
+INSTRUCTIONS = {
+    # --- List & cluster ---
+    "k8s_resource_status": {
+        "category": "list",
+        "params": ["resource_type", "namespace", "all_namespaces", "label_selector", "field_selector"],
+        "required": ["resource_type"],
+        "summary": "List resources (pods, svc, deployments, ingress, ...)",
+        "example": {"instruction": "k8s_resource_status", "params": {"resource_type": "pods", "namespace": "default"}},
+    },
+    "get_resource": {
+        "category": "list",
+        "params": ["resource_type", "name", "namespace", "output"],
+        "required": ["resource_type", "name"],
+        "summary": "Get one resource by type and name",
+        "example": {"instruction": "get_resource", "params": {"resource_type": "deployment", "name": "api", "namespace": "prod"}},
+    },
+    "get_all_namespaces": {
+        "category": "list",
+        "params": [],
+        "required": [],
+        "summary": "List all namespaces",
+        "example": {"instruction": "get_all_namespaces", "params": {}},
+    },
+    "get_nodes": {
+        "category": "list",
+        "params": ["wide"],
+        "required": [],
+        "summary": "List cluster nodes",
+        "example": {"instruction": "get_nodes", "params": {}},
+    },
+    "get_cluster_info": {
+        "category": "list",
+        "params": [],
+        "required": [],
+        "summary": "Cluster info and API server URL",
+        "example": {"instruction": "get_cluster_info", "params": {}},
+    },
+    "get_api_resources": {
+        "category": "list",
+        "params": [],
+        "required": [],
+        "summary": "List all API resource types",
+        "example": {"instruction": "get_api_resources", "params": {}},
+    },
+    "get_contexts": {
+        "category": "list",
+        "params": [],
+        "required": [],
+        "summary": "List kubeconfig contexts",
+        "example": {"instruction": "get_contexts", "params": {}},
+    },
+    "get_current_context": {
+        "category": "list",
+        "params": [],
+        "required": [],
+        "summary": "Show current kubectl context",
+        "example": {"instruction": "get_current_context", "params": {}},
+    },
+    # --- Describe ---
+    "describe_resource": {
+        "category": "describe",
+        "params": ["resource_type", "name", "namespace"],
+        "required": ["resource_type", "name"],
+        "summary": "Describe any resource (generic)",
+        "example": {"instruction": "describe_resource", "params": {"resource_type": "pod", "name": "nginx", "namespace": "default"}},
+    },
+    "describe_pod": {
+        "category": "describe",
+        "params": ["pod_name", "namespace"],
+        "required": ["pod_name"],
+        "summary": "Describe a pod (events, state, containers)",
+        "example": {"instruction": "describe_pod", "params": {"pod_name": "nginx", "namespace": "default"}},
+    },
+    "describe_service": {
+        "category": "describe",
+        "params": ["service_name", "namespace"],
+        "required": ["service_name"],
+        "summary": "Describe a Service (endpoints, ports, selectors)",
+        "example": {"instruction": "describe_service", "params": {"service_name": "api", "namespace": "default"}},
+    },
+    "describe_deployment": {
+        "category": "describe",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Describe a Deployment",
+        "example": {"instruction": "describe_deployment", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    "describe_node": {
+        "category": "describe",
+        "params": ["node_name"],
+        "required": ["node_name"],
+        "summary": "Describe a node",
+        "example": {"instruction": "describe_node", "params": {"node_name": "minikube"}},
+    },
+    "describe_ingress": {
+        "category": "describe",
+        "params": ["ingress_name", "namespace"],
+        "required": ["ingress_name"],
+        "summary": "Describe an Ingress",
+        "example": {"instruction": "describe_ingress", "params": {"ingress_name": "web", "namespace": "default"}},
+    },
+    "describe_configmap": {
+        "category": "describe",
+        "params": ["configmap_name", "namespace"],
+        "required": ["configmap_name"],
+        "summary": "Describe a ConfigMap",
+        "example": {"instruction": "describe_configmap", "params": {"configmap_name": "app-config", "namespace": "default"}},
+    },
+    "describe_pvc": {
+        "category": "describe",
+        "params": ["pvc_name", "namespace"],
+        "required": ["pvc_name"],
+        "summary": "Describe a PVC",
+        "example": {"instruction": "describe_pvc", "params": {"pvc_name": "data-pvc", "namespace": "default"}},
+    },
+    # --- Pod debug ---
+    "get_pod": {
+        "category": "pods",
+        "params": ["pod_name", "namespace"],
+        "required": ["pod_name"],
+        "summary": "Get one pod",
+        "example": {"instruction": "get_pod", "params": {"pod_name": "nginx", "namespace": "default"}},
+    },
+    "get_pod_logs": {
+        "category": "pods",
+        "params": ["pod_name", "namespace", "container", "tail_lines", "previous", "follow"],
+        "required": ["pod_name"],
+        "summary": "Pod logs (tail, previous container, follow)",
+        "example": {"instruction": "get_pod_logs", "params": {"pod_name": "api", "namespace": "prod", "tail_lines": "200", "previous": False}},
+    },
+    "get_pod_yaml": {
+        "category": "pods",
+        "params": ["pod_name", "namespace"],
+        "required": ["pod_name"],
+        "summary": "Export pod manifest as YAML",
+        "example": {"instruction": "get_pod_yaml", "params": {"pod_name": "nginx", "namespace": "default"}},
+    },
+    "get_resource_yaml": {
+        "category": "pods",
+        "params": ["resource_type", "name", "namespace"],
+        "required": ["resource_type", "name"],
+        "summary": "Export any resource as YAML",
+        "example": {"instruction": "get_resource_yaml", "params": {"resource_type": "deployment", "name": "api", "namespace": "prod"}},
+    },
+    "exec_pod": {
+        "category": "pods",
+        "params": ["pod_name", "command", "namespace", "container"],
+        "required": ["pod_name", "command"],
+        "summary": "Run command in pod (e.g. ls, env, sh -c 'cat /etc/os-release')",
+        "example": {"instruction": "exec_pod", "params": {"pod_name": "nginx", "command": "ls -la /", "namespace": "default"}},
+    },
+    "get_events": {
+        "category": "debug",
+        "params": ["namespace", "all_namespaces", "field_selector"],
+        "required": [],
+        "summary": "Recent cluster/namespace events",
+        "example": {"instruction": "get_events", "params": {"namespace": "default"}},
+    },
+    "get_pod_events": {
+        "category": "debug",
+        "params": ["pod_name", "namespace"],
+        "required": ["pod_name"],
+        "summary": "Events for a specific pod",
+        "example": {"instruction": "get_pod_events", "params": {"pod_name": "api-7d8f9", "namespace": "prod"}},
+    },
+    "top_pods": {
+        "category": "debug",
+        "params": ["namespace", "all_namespaces"],
+        "required": [],
+        "summary": "Pod CPU/memory usage (needs metrics-server)",
+        "example": {"instruction": "top_pods", "params": {"namespace": "kube-system"}},
+    },
+    "top_nodes": {
+        "category": "debug",
+        "params": [],
+        "required": [],
+        "summary": "Node CPU/memory usage",
+        "example": {"instruction": "top_nodes", "params": {}},
+    },
+    # --- Services & networking ---
+    "get_endpoints": {
+        "category": "network",
+        "params": ["name", "namespace"],
+        "required": [],
+        "summary": "List Endpoints (which pods back a service)",
+        "example": {"instruction": "get_endpoints", "params": {"name": "api", "namespace": "default"}},
+    },
+    "get_service": {
+        "category": "network",
+        "params": ["service_name", "namespace"],
+        "required": ["service_name"],
+        "summary": "Get a Service",
+        "example": {"instruction": "get_service", "params": {"service_name": "api", "namespace": "default"}},
+    },
+    "get_ingress": {
+        "category": "network",
+        "params": ["namespace", "all_namespaces"],
+        "required": [],
+        "summary": "List Ingress resources",
+        "example": {"instruction": "get_ingress", "params": {"namespace": "default"}},
+    },
+    # --- Deployments & rollout ---
+    "get_deployment": {
+        "category": "workloads",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Get a Deployment",
+        "example": {"instruction": "get_deployment", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    "get_replicasets": {
+        "category": "workloads",
+        "params": ["namespace", "label_selector"],
+        "required": [],
+        "summary": "List ReplicaSets",
+        "example": {"instruction": "get_replicasets", "params": {"namespace": "default"}},
+    },
+    "scale_deployment": {
+        "category": "workloads",
+        "params": ["deployment_name", "replicas", "namespace"],
+        "required": ["deployment_name", "replicas"],
+        "summary": "Scale deployment replicas",
+        "example": {"instruction": "scale_deployment", "params": {"deployment_name": "api", "replicas": 3, "namespace": "prod"}},
+    },
+    "rollout_status": {
+        "category": "workloads",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Check rollout progress",
+        "example": {"instruction": "rollout_status", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    "rollout_restart": {
+        "category": "workloads",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Restart deployment (rolling restart)",
+        "example": {"instruction": "rollout_restart", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    "rollout_undo": {
+        "category": "workloads",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Rollback deployment to previous revision",
+        "example": {"instruction": "rollout_undo", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    "rollout_history": {
+        "category": "workloads",
+        "params": ["deployment_name", "namespace"],
+        "required": ["deployment_name"],
+        "summary": "Show deployment revision history",
+        "example": {"instruction": "rollout_history", "params": {"deployment_name": "api", "namespace": "prod"}},
+    },
+    # --- Config & storage ---
+    "get_configmaps": {
+        "category": "config",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List ConfigMaps",
+        "example": {"instruction": "get_configmaps", "params": {"namespace": "default"}},
+    },
+    "get_secrets": {
+        "category": "config",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List Secrets (names only)",
+        "example": {"instruction": "get_secrets", "params": {"namespace": "default"}},
+    },
+    "get_persistent_volumes": {
+        "category": "storage",
+        "params": [],
+        "required": [],
+        "summary": "List PersistentVolumes",
+        "example": {"instruction": "get_persistent_volumes", "params": {}},
+    },
+    "get_persistent_volume_claims": {
+        "category": "storage",
+        "params": ["namespace", "all_namespaces"],
+        "required": [],
+        "summary": "List PVCs",
+        "example": {"instruction": "get_persistent_volume_claims", "params": {"namespace": "default"}},
+    },
+    # --- Jobs ---
+    "get_jobs": {
+        "category": "batch",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List Jobs",
+        "example": {"instruction": "get_jobs", "params": {"namespace": "default"}},
+    },
+    "get_cronjobs": {
+        "category": "batch",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List CronJobs",
+        "example": {"instruction": "get_cronjobs", "params": {"namespace": "default"}},
+    },
+    # --- RBAC ---
+    "get_roles": {
+        "category": "rbac",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List Roles",
+        "example": {"instruction": "get_roles", "params": {"namespace": "default"}},
+    },
+    "get_rolebindings": {
+        "category": "rbac",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List RoleBindings",
+        "example": {"instruction": "get_rolebindings", "params": {"namespace": "default"}},
+    },
+    "get_network_policies": {
+        "category": "rbac",
+        "params": ["namespace"],
+        "required": [],
+        "summary": "List NetworkPolicies",
+        "example": {"instruction": "get_network_policies", "params": {"namespace": "default"}},
+    },
+    # --- Create / delete ---
+    "create_namespace": {
+        "category": "mutate",
+        "params": ["namespace"],
+        "required": ["namespace"],
+        "summary": "Create namespace",
+        "example": {"instruction": "create_namespace", "params": {"namespace": "docker"}},
+    },
+    "create_pod": {
+        "category": "mutate",
+        "params": ["pod_name", "image", "namespace"],
+        "required": ["pod_name", "image"],
+        "summary": "Run a pod",
+        "example": {"instruction": "create_pod", "params": {"pod_name": "nginx", "image": "nginx", "namespace": "docker"}},
+    },
+    "create_deployment": {
+        "category": "mutate",
+        "params": ["deployment_name", "image", "replicas", "namespace"],
+        "required": ["deployment_name", "image"],
+        "summary": "Create a deployment",
+        "example": {"instruction": "create_deployment", "params": {"deployment_name": "api", "image": "nginx", "replicas": 2, "namespace": "prod"}},
+    },
+    "expose_service": {
+        "category": "mutate",
+        "params": ["resource_name", "port", "target_port", "resource_type", "namespace"],
+        "required": ["resource_name", "port"],
+        "summary": "Expose deployment/pod as a Service",
+        "example": {"instruction": "expose_service", "params": {"resource_name": "api", "port": 80, "namespace": "prod"}},
+    },
+    "delete_resource": {
+        "category": "mutate",
+        "params": ["resource_type", "name", "namespace", "force"],
+        "required": ["resource_type", "name"],
+        "summary": "Delete any resource",
+        "example": {"instruction": "delete_resource", "params": {"resource_type": "pod", "name": "nginx", "namespace": "default"}},
+    },
+    "delete_pod": {
+        "category": "mutate",
+        "params": ["pod_name", "namespace", "force"],
+        "required": ["pod_name"],
+        "summary": "Delete a pod",
+        "example": {"instruction": "delete_pod", "params": {"pod_name": "nginx", "namespace": "default"}},
+    },
+    # --- Nodes ---
+    "cordon_node": {
+        "category": "nodes",
+        "params": ["node_name"],
+        "required": ["node_name"],
+        "summary": "Mark node unschedulable",
+        "example": {"instruction": "cordon_node", "params": {"node_name": "minikube"}},
+    },
+    "uncordon_node": {
+        "category": "nodes",
+        "params": ["node_name"],
+        "required": ["node_name"],
+        "summary": "Mark node schedulable",
+        "example": {"instruction": "uncordon_node", "params": {"node_name": "minikube"}},
+    },
+    # --- Labels ---
+    "label_resource": {
+        "category": "mutate",
+        "params": ["resource_type", "name", "labels", "namespace", "overwrite"],
+        "required": ["resource_type", "name", "labels"],
+        "summary": "Add labels (labels='key=value')",
+        "example": {"instruction": "label_resource", "params": {"resource_type": "pod", "name": "nginx", "labels": "env=prod", "namespace": "default"}},
+    },
+    "annotate_resource": {
+        "category": "mutate",
+        "params": ["resource_type", "name", "annotations", "namespace", "overwrite"],
+        "required": ["resource_type", "name", "annotations"],
+        "summary": "Add annotations",
+        "example": {"instruction": "annotate_resource", "params": {"resource_type": "deployment", "name": "api", "annotations": "note=debug", "namespace": "prod"}},
+    },
+}
+
+# Suggested multi-step workflows for complex debugging (LLM can emit these as JSON arrays)
+DEBUG_POD_WORKFLOW = [
+    {"instruction": "get_pod", "params": {"pod_name": "{pod_name}", "namespace": "{namespace}"}},
+    {"instruction": "describe_pod", "params": {"pod_name": "{pod_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_pod_events", "params": {"pod_name": "{pod_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_pod_logs", "params": {"pod_name": "{pod_name}", "namespace": "{namespace}", "tail_lines": "100"}},
+]
+
+DEBUG_SERVICE_WORKFLOW = [
+    {"instruction": "get_service", "params": {"service_name": "{service_name}", "namespace": "{namespace}"}},
+    {"instruction": "describe_service", "params": {"service_name": "{service_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_endpoints", "params": {"name": "{service_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_events", "params": {"namespace": "{namespace}"}},
+]
+
+CATEGORY_ORDER = [
+    "list", "describe", "pods", "debug", "network", "workloads",
+    "config", "storage", "batch", "rbac", "mutate", "nodes",
+]
