@@ -8,7 +8,9 @@ if str(_MCP_SRC) not in sys.path:
 
 from k8s_mcp_server.instructions_catalog import (  # noqa: E402
     CATEGORY_ORDER,
+    DEBUG_DEPLOYMENT_WORKFLOW,
     DEBUG_POD_WORKFLOW,
     DEBUG_SERVICE_WORKFLOW,
+    DESTRUCTIVE_INSTRUCTIONS,
     INSTRUCTIONS,
 )

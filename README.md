@@ -41,6 +41,8 @@ flowchart LR
 - **Separation of concerns** — The LLM never runs shell commands directly. It only produces structured JSON; the MCP server is the only component that touches `kubectl`.
 - **Instruction registry** — New operations are added by defining a prompt function in `mcp_server/src/k8s_mcp_server/prompts.py` and registering it in `server.py`.
 - **Session ID** — Every MCP request requires a `session_id` query parameter for traceability (the agent uses a fixed `vscode-session` id by default).
+- **Safety** — Destructive operations (delete, scale, drain, etc.) prompt for confirmation in the agent. Prefix commands with `dry:` to preview kubectl without executing.
+- **Batch & health** — Multi-step workflows use `POST /mcp/execute/batch`. `GET /health` checks kubectl and cluster connectivity.
 
 ---
 
@@ -94,6 +96,8 @@ The agent acts like a **senior DevOps engineer** with broad kubectl coverage:
 
 - `debug pod nginx in default` → get → describe → events → logs
 - `debug service api in prod` → get svc → describe → endpoints → events
+- `debug deployment api in prod` → get → describe → rollout status → history → replicasets → events
+- `dry: delete pod nginx in default` → preview kubectl command without running it
 
 Type **`help`** in the agent to list all commands. With the MCP server running:
 

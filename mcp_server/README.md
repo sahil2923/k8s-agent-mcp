@@ -46,6 +46,8 @@ Once Minikube is started you should be able to execute kubectl commands
 
 # Test if MCP is able to reach Minikube cluster using curl
 
+❯ curl http://localhost:8080/health
+
 ❯ curl -X POST "http://localhost:8080/mcp/execute?session_id=my-session-id" \
   -H "Content-Type: application/json" \
   -d '{
@@ -55,6 +57,19 @@ Once Minikube is started you should be able to execute kubectl commands
       "namespace": "default"
     }
   }'
+
+# Dry-run (build command without executing):
+❯ curl -X POST "http://localhost:8080/mcp/execute?session_id=my-session-id&dry_run=true" \
+  -H "Content-Type: application/json" \
+  -d '{"instruction": "delete_pod", "params": {"pod_name": "nginx", "namespace": "default"}}'
+
+# Batch execute (debug workflows):
+❯ curl -X POST "http://localhost:8080/mcp/execute/batch?session_id=my-session-id" \
+  -H "Content-Type: application/json" \
+  -d '{"commands": [
+    {"instruction": "get_pod", "params": {"pod_name": "nginx", "namespace": "default"}},
+    {"instruction": "describe_pod", "params": {"pod_name": "nginx", "namespace": "default"}}
+  ]}'
 
 ## Troubleshooting
 

@@ -13,16 +13,30 @@ from openai import AsyncOpenAI
 
 from instructions_loader import (
     CATEGORY_ORDER,
+    DEBUG_DEPLOYMENT_WORKFLOW,
     DEBUG_POD_WORKFLOW,
     DEBUG_SERVICE_WORKFLOW,
+    DESTRUCTIVE_INSTRUCTIONS,
     INSTRUCTIONS,
 )
 
-MCP_SERVER_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080/mcp/execute")
+MCP_BASE_URL = os.getenv("MCP_SERVER_URL", "http://localhost:8080").rstrip("/")
+MCP_EXECUTE_URL = (
+    MCP_BASE_URL
+    if MCP_BASE_URL.endswith("/mcp/execute")
+    else f"{MCP_BASE_URL}/mcp/execute"
+)
+MCP_BATCH_URL = MCP_EXECUTE_URL.replace("/mcp/execute", "/mcp/execute/batch")
+MCP_HEALTH_URL = MCP_EXECUTE_URL.replace("/mcp/execute", "/health")
 SESSION_ID = os.getenv("MCP_SESSION_ID", "vscode-session")
+DRY_RUN_DEFAULT = os.getenv("DRY_RUN", "").lower() in ("1", "true", "yes")
+REQUIRE_DESTRUCTIVE_CONFIRM = os.getenv(
+    "REQUIRE_DESTRUCTIVE_CONFIRM", "true"
+).lower() not in ("0", "false", "no")
 
 EXIT_COMMANDS = {"exit", "quit", "q", "bye"}
 HELP_COMMANDS = {"help", "?", "commands"}
+DRY_RUN_PREFIXES = ("dry:", "dry-run:", "preview:")
 
 # Map common LLM alias names to canonical instruction names
 INSTRUCTION_ALIASES = {
@@ -110,6 +124,9 @@ Debug pod example:
 Debug service example:
 {json.dumps(DEBUG_SERVICE_WORKFLOW)}
 
+Debug deployment example:
+{json.dumps(DEBUG_DEPLOYMENT_WORKFLOW)}
+
 User message: {json.dumps(message)}
 """
 
@@ -171,6 +188,20 @@ def try_workflow_expand(message: str) -> Optional[List[dict]]:
         return _fill_workflow(
             DEBUG_SERVICE_WORKFLOW,
             service_name=service_name,
+            namespace=namespace,
+        )
+
+    deploy_match = re.search(
+        r"debug(?:ging)?\s+(?:the\s+)?(?:deployment|deploy)\s+['\"]?([\w.-]+)['\"]?"
+        r"(?:\s+in\s+(?:the\s+)?['\"]?([\w.-]+)['\"]?\s*namespace)?",
+        lower,
+    )
+    if deploy_match:
+        deployment_name = deploy_match.group(1)
+        namespace = deploy_match.group(2) or "default"
+        return _fill_workflow(
+            DEBUG_DEPLOYMENT_WORKFLOW,
+            deployment_name=deployment_name,
             namespace=namespace,
         )
 
@@ -329,45 +360,142 @@ def print_help():
         print(f"  [{category}]")
         for name, summary in sorted(items):
             print(f"    • {name}: {summary}")
-    print("\n  Workflows: say 'debug pod <name>' or 'debug service <name>' for multi-step troubleshooting.")
+    print("\n  Workflows: 'debug pod <name>', 'debug service <name>', 'debug deployment <name>'")
+    print("  Preview: prefix with 'dry:' to show kubectl without running (e.g. dry: delete pod nginx)")
     print(f"  Exit: {', '.join(sorted(EXIT_COMMANDS))}\n")
 
 
-async def call_mcp_server(command_json: dict):
+def _parse_dry_run(user_input: str) -> tuple[str, bool]:
+    lower = user_input.lower()
+    for prefix in DRY_RUN_PREFIXES:
+        if lower.startswith(prefix):
+            return user_input[len(prefix):].strip(), True
+    return user_input, DRY_RUN_DEFAULT
+
+
+def _format_mcp_error(response: httpx.Response) -> str:
+    try:
+        body = response.json()
+        detail = body.get("detail", body)
+        if isinstance(detail, dict):
+            if "error" in detail:
+                return str(detail["error"])
+            return json.dumps(detail, indent=2)
+        return str(detail)
+    except json.JSONDecodeError:
+        return response.text
+
+
+async def check_mcp_health() -> bool:
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.get(MCP_HEALTH_URL)
+            if response.status_code != 200:
+                print(f"⚠️ MCP health check failed ({response.status_code})")
+                return False
+            data = response.json()
+            status = data.get("status", "unknown")
+            print(f"✅ MCP server {status} | {data.get('instructions', '?')} instructions")
+            if not data.get("cluster_reachable"):
+                print("⚠️ kubectl client OK but cluster not reachable — check minikube/kubectl context")
+            return status in ("healthy", "degraded")
+    except httpx.RequestError as e:
+        print(f"❌ Cannot reach MCP server at {MCP_HEALTH_URL}: {e}")
+        print("   Start it with: cd mcp_server && poetry run uvicorn k8s_mcp_server.server:app --port 8080")
+        return False
+
+
+def _needs_confirmation(commands: List[dict]) -> bool:
+    if not REQUIRE_DESTRUCTIVE_CONFIRM:
+        return False
+    return any(cmd["instruction"] in DESTRUCTIVE_INSTRUCTIONS for cmd in commands)
+
+
+def _confirm_destructive(commands: List[dict]) -> bool:
+    destructive = [c for c in commands if c["instruction"] in DESTRUCTIVE_INSTRUCTIONS]
+    print("\n⚠️  Destructive operation(s) detected:")
+    for cmd in destructive:
+        print(f"   • {cmd['instruction']}: {json.dumps(cmd['params'])}")
+    try:
+        answer = input("Proceed? [y/N]: ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        return False
+    return answer in ("y", "yes")
+
+
+async def call_mcp_server(command_json: dict, dry_run: bool = False):
     async with httpx.AsyncClient(timeout=120.0) as client:
         response = await client.post(
-            MCP_SERVER_URL,
+            MCP_EXECUTE_URL,
             json=command_json,
-            params={"session_id": SESSION_ID},
+            params={"session_id": SESSION_ID, "dry_run": dry_run},
         )
         if response.status_code == 200:
             return response.json()
-        print(f"❌ MCP Server Error: {response.text}")
+        print(f"❌ MCP Server Error: {_format_mcp_error(response)}")
         return None
 
 
-async def handle_command(user_input: str) -> None:
+async def call_mcp_batch(commands: List[dict], dry_run: bool = False):
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        response = await client.post(
+            MCP_BATCH_URL,
+            json={"commands": commands},
+            params={"session_id": SESSION_ID, "dry_run": dry_run},
+        )
+        if response.status_code == 200:
+            return response.json()
+        print(f"❌ MCP Batch Error: {_format_mcp_error(response)}")
+        return None
+
+
+def _print_result(result: dict) -> None:
+    print("\n📦 MCP Output:")
+    if result.get("dry_run"):
+        print("(dry-run — not executed)")
+    print(f"Command: {result['command']}")
+    output = result.get("output", "")
+    print(f"Output:\n{output if output else '(empty)'}")
+
+
+async def handle_command(user_input: str, dry_run: bool = False) -> None:
     commands = await parse_nl_to_command(user_input)
     if not commands:
         print("❌ Failed to parse natural language.")
         return
 
+    if dry_run:
+        print("\n🔍 Dry-run mode — commands will be shown but not executed")
+
     print(f"\n✅ Parsed command(s):\n{json.dumps(commands, indent=2)}")
 
-    for i, command_json in enumerate(commands, start=1):
-        if len(commands) > 1:
-            print(f"\n--- Step {i}/{len(commands)} ---")
-        result = await call_mcp_server(command_json)
-        if result:
-            print("\n📦 MCP Output:")
-            print(f"Command: {result['command']}")
-            output = result["output"]
-            print(f"Output:\n{output if output else '(empty)'}")
+    if not dry_run and _needs_confirmation(commands):
+        if not _confirm_destructive(commands):
+            print("❌ Cancelled.")
+            return
+
+    if len(commands) > 1:
+        batch = await call_mcp_batch(commands, dry_run=dry_run)
+        if not batch:
+            return
+        for result in batch.get("results", []):
+            step = result.get("step", "?")
+            print(f"\n--- Step {step}/{batch.get('steps', '?')} ---")
+            _print_result(result)
+        return
+
+    result = await call_mcp_server(commands[0], dry_run=dry_run)
+    if result:
+        _print_result(result)
 
 
 async def main():
     print("K8s DevOps Agent — natural language → kubectl")
-    print(f"  {len(INSTRUCTIONS)} operations | type 'help' for commands | Ctrl+C to stop\n")
+    print(f"  {len(INSTRUCTIONS)} operations | type 'help' for commands | Ctrl+C to stop")
+    if DRY_RUN_DEFAULT:
+        print("  DRY_RUN=true — all commands preview-only until you unset it")
+    await check_mcp_health()
+    print()
 
     while True:
         try:
@@ -387,7 +515,11 @@ async def main():
             print_help()
             continue
 
-        await handle_command(user_input)
+        message, dry_run = _parse_dry_run(user_input)
+        if not message:
+            continue
+
+        await handle_command(message, dry_run=dry_run)
         print()
 
 
