@@ -63,6 +63,10 @@ def get_current_context() -> str:
     return "kubectl config current-context"
 
 
+def switch_context(context_name: str) -> str:
+    return f"kubectl config use-context {context_name}"
+
+
 # --- Describe ---
 
 
@@ -345,6 +349,19 @@ def cordon_node(node_name: str) -> str:
 
 def uncordon_node(node_name: str) -> str:
     return f"kubectl uncordon {node_name}"
+
+
+def drain_node(
+    node_name: str,
+    ignore_daemonsets: bool = True,
+    force: bool = False,
+) -> str:
+    flags = ""
+    if ignore_daemonsets:
+        flags += " --ignore-daemonsets"
+    if force:
+        flags += " --force"
+    return f"kubectl drain {node_name}{flags}"
 
 
 # --- Labels & annotations ---

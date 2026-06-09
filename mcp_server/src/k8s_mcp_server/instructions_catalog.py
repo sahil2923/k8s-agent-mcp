@@ -152,6 +152,7 @@ INSTRUCTIONS = {
         "params": ["pod_name", "command", "namespace", "container"],
         "required": ["pod_name", "command"],
         "summary": "Run command in pod (e.g. ls, env, sh -c 'cat /etc/os-release')",
+        "destructive": True,
         "example": {"instruction": "exec_pod", "params": {"pod_name": "nginx", "command": "ls -la /", "namespace": "default"}},
     },
     "get_events": {
@@ -224,6 +225,7 @@ INSTRUCTIONS = {
         "params": ["deployment_name", "replicas", "namespace"],
         "required": ["deployment_name", "replicas"],
         "summary": "Scale deployment replicas",
+        "destructive": True,
         "example": {"instruction": "scale_deployment", "params": {"deployment_name": "api", "replicas": 3, "namespace": "prod"}},
     },
     "rollout_status": {
@@ -238,6 +240,7 @@ INSTRUCTIONS = {
         "params": ["deployment_name", "namespace"],
         "required": ["deployment_name"],
         "summary": "Restart deployment (rolling restart)",
+        "destructive": True,
         "example": {"instruction": "rollout_restart", "params": {"deployment_name": "api", "namespace": "prod"}},
     },
     "rollout_undo": {
@@ -245,6 +248,7 @@ INSTRUCTIONS = {
         "params": ["deployment_name", "namespace"],
         "required": ["deployment_name"],
         "summary": "Rollback deployment to previous revision",
+        "destructive": True,
         "example": {"instruction": "rollout_undo", "params": {"deployment_name": "api", "namespace": "prod"}},
     },
     "rollout_history": {
@@ -326,6 +330,7 @@ INSTRUCTIONS = {
         "params": ["namespace"],
         "required": ["namespace"],
         "summary": "Create namespace",
+        "destructive": True,
         "example": {"instruction": "create_namespace", "params": {"namespace": "docker"}},
     },
     "create_pod": {
@@ -333,6 +338,7 @@ INSTRUCTIONS = {
         "params": ["pod_name", "image", "namespace"],
         "required": ["pod_name", "image"],
         "summary": "Run a pod",
+        "destructive": True,
         "example": {"instruction": "create_pod", "params": {"pod_name": "nginx", "image": "nginx", "namespace": "docker"}},
     },
     "create_deployment": {
@@ -340,6 +346,7 @@ INSTRUCTIONS = {
         "params": ["deployment_name", "image", "replicas", "namespace"],
         "required": ["deployment_name", "image"],
         "summary": "Create a deployment",
+        "destructive": True,
         "example": {"instruction": "create_deployment", "params": {"deployment_name": "api", "image": "nginx", "replicas": 2, "namespace": "prod"}},
     },
     "expose_service": {
@@ -347,6 +354,7 @@ INSTRUCTIONS = {
         "params": ["resource_name", "port", "target_port", "resource_type", "namespace"],
         "required": ["resource_name", "port"],
         "summary": "Expose deployment/pod as a Service",
+        "destructive": True,
         "example": {"instruction": "expose_service", "params": {"resource_name": "api", "port": 80, "namespace": "prod"}},
     },
     "delete_resource": {
@@ -354,6 +362,7 @@ INSTRUCTIONS = {
         "params": ["resource_type", "name", "namespace", "force"],
         "required": ["resource_type", "name"],
         "summary": "Delete any resource",
+        "destructive": True,
         "example": {"instruction": "delete_resource", "params": {"resource_type": "pod", "name": "nginx", "namespace": "default"}},
     },
     "delete_pod": {
@@ -361,6 +370,7 @@ INSTRUCTIONS = {
         "params": ["pod_name", "namespace", "force"],
         "required": ["pod_name"],
         "summary": "Delete a pod",
+        "destructive": True,
         "example": {"instruction": "delete_pod", "params": {"pod_name": "nginx", "namespace": "default"}},
     },
     # --- Nodes ---
@@ -369,6 +379,7 @@ INSTRUCTIONS = {
         "params": ["node_name"],
         "required": ["node_name"],
         "summary": "Mark node unschedulable",
+        "destructive": True,
         "example": {"instruction": "cordon_node", "params": {"node_name": "minikube"}},
     },
     "uncordon_node": {
@@ -376,7 +387,24 @@ INSTRUCTIONS = {
         "params": ["node_name"],
         "required": ["node_name"],
         "summary": "Mark node schedulable",
+        "destructive": True,
         "example": {"instruction": "uncordon_node", "params": {"node_name": "minikube"}},
+    },
+    "drain_node": {
+        "category": "nodes",
+        "params": ["node_name", "ignore_daemonsets", "force"],
+        "required": ["node_name"],
+        "summary": "Drain pods from a node (evict workloads)",
+        "destructive": True,
+        "example": {"instruction": "drain_node", "params": {"node_name": "minikube", "ignore_daemonsets": True}},
+    },
+    "switch_context": {
+        "category": "list",
+        "params": ["context_name"],
+        "required": ["context_name"],
+        "summary": "Switch kubectl context",
+        "destructive": True,
+        "example": {"instruction": "switch_context", "params": {"context_name": "minikube"}},
     },
     # --- Labels ---
     "label_resource": {
@@ -384,6 +412,7 @@ INSTRUCTIONS = {
         "params": ["resource_type", "name", "labels", "namespace", "overwrite"],
         "required": ["resource_type", "name", "labels"],
         "summary": "Add labels (labels='key=value')",
+        "destructive": True,
         "example": {"instruction": "label_resource", "params": {"resource_type": "pod", "name": "nginx", "labels": "env=prod", "namespace": "default"}},
     },
     "annotate_resource": {
@@ -391,8 +420,13 @@ INSTRUCTIONS = {
         "params": ["resource_type", "name", "annotations", "namespace", "overwrite"],
         "required": ["resource_type", "name", "annotations"],
         "summary": "Add annotations",
+        "destructive": True,
         "example": {"instruction": "annotate_resource", "params": {"resource_type": "deployment", "name": "api", "annotations": "note=debug", "namespace": "prod"}},
     },
+}
+
+DESTRUCTIVE_INSTRUCTIONS = {
+    name for name, spec in INSTRUCTIONS.items() if spec.get("destructive")
 }
 
 # Suggested multi-step workflows for complex debugging (LLM can emit these as JSON arrays)
@@ -407,6 +441,15 @@ DEBUG_SERVICE_WORKFLOW = [
     {"instruction": "get_service", "params": {"service_name": "{service_name}", "namespace": "{namespace}"}},
     {"instruction": "describe_service", "params": {"service_name": "{service_name}", "namespace": "{namespace}"}},
     {"instruction": "get_endpoints", "params": {"name": "{service_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_events", "params": {"namespace": "{namespace}"}},
+]
+
+DEBUG_DEPLOYMENT_WORKFLOW = [
+    {"instruction": "get_deployment", "params": {"deployment_name": "{deployment_name}", "namespace": "{namespace}"}},
+    {"instruction": "describe_deployment", "params": {"deployment_name": "{deployment_name}", "namespace": "{namespace}"}},
+    {"instruction": "rollout_status", "params": {"deployment_name": "{deployment_name}", "namespace": "{namespace}"}},
+    {"instruction": "rollout_history", "params": {"deployment_name": "{deployment_name}", "namespace": "{namespace}"}},
+    {"instruction": "get_replicasets", "params": {"namespace": "{namespace}"}},
     {"instruction": "get_events", "params": {"namespace": "{namespace}"}},
 ]
 

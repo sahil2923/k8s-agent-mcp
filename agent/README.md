@@ -40,10 +40,14 @@ Type **`help`** inside the agent to see all 54+ kubectl operations.
 - `describe deployment api in prod`
 - `debug pod crashloop-api in production`
 - `debug service frontend in default`
+- `debug deployment api in prod`
 - `rollout status for deployment api in prod`
 - `scale deployment api to 5 replicas in prod`
 - `get events in default namespace`
 - `top pods in kube-system`
+- `dry: delete pod nginx in default` (preview only)
+
+**Optional env vars:** `DRY_RUN=true` (always preview), `REQUIRE_DESTRUCTIVE_CONFIRM=false` (skip y/N prompts), `MCP_SERVER_URL=http://localhost:8080`
 
 
 # Output
